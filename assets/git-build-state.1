@@ -1,0 +1,52 @@
+.\" Process this file with
+.\" groff -man -Tascii git-build-state.1
+.\"
+.TH GIT-BUILD-STATE 1 "NOV 2016" git-build-state "User Manuals"
+.SH NAME
+git-build-state \- Display build state from Stash/Bitbucket
+.\-------------------------------- SYNOPSIS ------------------------------------
+.SH SYNOPSIS
+.I git build-state
+[options] [-log] <commit>
+.\------------------------------ DESCRIPTION -----------------------------------
+.SH DESCRIPTION
+Show build state stored in Stash/Bitbucket for commit.
+
+Commits can be on any form that `git show' can translate to a commit.
+
+It is also possible to display a `git log' with build stats included.
+.\-------------------------------- OPTIONS -------------------------------------
+.SH OPTIONS
+.IP -log
+Show the git log with build stats included.
+.IP -generate-creds
+Use this for generating credentials necessary to communicate with Stash/Bitbucket
+.\----------------------------- CONFIGURATION ----------------------------------
+.SH CONFIGURATION
+Configuration is done with `git config`. Example to set build-state.auth.user configuration:
+.RS
+.B git config --global build-state.auth.user user@example.com
+.RE
+
+.I build-state.auth.user
+.RS
+The username for authentications
+.RE
+
+.I build-state.auth.credentials
+.RS
+Base64 encoded string of username and password. Encoded on the form .I username:password\fR. This might seem insecure, however it should not be worse the having a unencrypted token saved.
+.RE
+
+.I build-state.endpoint
+.RS
+Normaly the Stash/Bitbucket URL is inferred from the git remote setting. This setting will over ride that. Written on the form \fI https://example.com
+.RE
+
+.I build-state.port
+.RS
+Defines the port for the Stash/Bitbucket API
+.RE
+.\-------------------------------- AUTHOR --------------------------------------
+.SH AUTHOR
+Nils Lagerkvist <nils dot lagerkvist at gmail dot com>

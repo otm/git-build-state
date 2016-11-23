@@ -1,0 +1,28 @@
+#!bash
+#
+# git-build_state-completion
+# ===================
+
+__my_init_completion()
+{
+    COMPREPLY=()
+    _get_comp_words_by_ref cur prev words cword
+}
+
+
+
+_git_build_state ()
+{
+  if [[ "$cur" == -* ]]; then
+    __gitcomp '-log -generate-creds -install'
+    return
+  fi
+  __git_complete_revlist_file
+
+}
+
+if [ -z "`type -t __git_find_on_cmdline`" ]; then
+	alias __git_find_on_cmdline=__git_find_subcommand
+fi
+
+# ex: ts=4 sw=4 et filetype=sh
