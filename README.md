@@ -9,5 +9,5 @@ Displays build-status in Stash/Bitbucket
 
 # Alternative Installation
 ```
-curl -sf -L https://gist.githubusercontent.com/otm/a901b71372a2f062ea87d335ea80969a/raw/git-build-state.sh
+curl -sf -L https://gist.githubusercontent.com/otm/a901b71372a2f062ea87d335ea80969a/raw/git-build-state.sh | sudo bash
 ```
