@@ -35,7 +35,7 @@ func gitLogShort(branch string) (shortLog, error) {
 	}
 
 	var logs shortLog
-	cmd := exec.Command("git", "log", "--pretty=oneline", branch)
+	cmd := exec.Command("git", "log", "-8", "--pretty=oneline", branch)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
