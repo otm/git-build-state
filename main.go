@@ -145,19 +145,22 @@ func (s *subcommand) install() int {
 	case "linux":
 		compDir = "/etc/bash_completion.d"
 	case "darwin":
-		compDir = "/opt/local/etc/bash_completion.d"
+		compDir = macBashCompletionDir()
 	default:
 		log.Fatalf("Unknown runtime: %s", runtime.GOOS)
 	}
-	compPath := path.Join(compDir, "git-build-state")
-	fmt.Printf("Installing bash completion: %s\n", compPath)
 
-	compFile, err := os.Create(compPath)
-	logFatalOnError(err)
-	_, err = compFile.Write(asset("git-build-state"))
-	logFatalOnError(err)
-	err = compFile.Close()
-	logFatalOnError(err)
+	if compDir != "" {
+		compPath := path.Join(compDir, "git-build-state")
+		fmt.Printf("Installing bash completion: %s\n", compPath)
+
+		compFile, err := os.Create(compPath)
+		logFatalOnError(err)
+		defer compFile.Close()
+
+		_, err = compFile.Write(asset("git-build-state"))
+		logFatalOnError(err)
+	}
 
 	// Configure user
 	fmt.Println("\nConfiguring Stash/Bitbucket credentials (abort with ctrl-c)")
@@ -170,6 +173,20 @@ func (s *subcommand) install() int {
 	logFatalOnError(setGitConfig("build-state.auth.credentials", b64credentials))
 
 	return 0
+}
+
+func macBashCompletionDir() string {
+	compDir := "/opt/local/etc/bash_completion.d"
+
+	if _, err := os.Stat(compDir); err == nil {
+		return compDir
+	}
+
+	brewPrefix, err := exec.Command("brew", "--prefix").Output()
+	if err != nil {
+		return ""
+	}
+	return string(path.Join(string(brewPrefix), "etc/bash_completion.d"))
 }
 
 func logFatalOnError(err error) {
