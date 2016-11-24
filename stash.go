@@ -171,7 +171,9 @@ Date:  %s
 
    %s
 `
-	return fmt.Sprintf(template, bs.Name, bs.Key, bs.State, bs.URL, time.Unix(0, bs.DateAdded*1000*1000), bs.Description)
+	output := fmt.Sprintf(template, bs.Name, bs.Key, bs.State, bs.URL, time.Unix(0, bs.DateAdded*1000*1000), bs.Description)
+	output = strings.Replace(output, "\\n", "\n   ", -1)
+	return output
 }
 
 // BuildStatusResponse represent the JSON response from stash
@@ -286,5 +288,5 @@ func stashAPIURL() (*url.URL, error) {
 	if port != "" {
 		stashURL = stashURL + ":" + port
 	}
-	return url.Parse("http://" + stashURL)
+	return url.Parse("https://" + stashURL)
 }
