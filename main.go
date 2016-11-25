@@ -183,6 +183,7 @@ func macBashCompletionDir() string {
 	}
 
 	brewPrefix, err := exec.Command("brew", "--prefix").Output()
+	brewPrefix = bytes.TrimSpace(brewPrefix)
 	if err != nil {
 		return ""
 	}
