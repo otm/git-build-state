@@ -102,7 +102,7 @@ func (s *StashService) BuildStatus(c CommitID) (BuildStatusResponse, error) {
 
 	var buildStatus BuildStatusResponse
 	err = json.Unmarshal(body, &buildStatus)
-	if err != nil {
+	if err != nil || buildStatus.Size == 0 {
 		logFatalOnError(newStashError(body))
 	}
 
