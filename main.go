@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"log"
 	"os"
 	"os/exec"
@@ -16,6 +18,21 @@ import (
 )
 
 //go:generate go run tools/include.go
+
+// TODO(nils): document build-state.format.log and build-state.format.state
+
+const (
+	buildStateDefaultTemplate = `Name:  {{.Name}}     Key: {{.Key}}
+State: {{.State}}
+URL:   {{.URL}}
+Date:  {{.Date}}
+
+   {{.Description}}
+`
+	buildStatusDefaultTemplate = `{{.ID}} {{.Message}}
+   Successful: {{.Status.Successful}}, In Progress: {{.Status.InProgress}}, Failed: {{.Status.Failed}}
+`
+)
 
 func main() {
 	log.SetFlags(log.Lshortfile)
@@ -95,22 +112,70 @@ func readUserAndPassword() (user, password, b64credentials string) {
 }
 
 func (s *subcommand) displayLog() int {
-	logs, err := gitLogShort(flag.Arg(0))
+	var tmp []interface{}
+
+	fl := flag.NewFlagSet("BuildState", flag.ExitOnError)
+	format := fl.String("format", "", "Go text template, see manual for more info")
+	formatJSON := fl.Bool("json", false, "Format output as JSON")
+
+	logs, err := gitLogShort(fl.Arg(0))
 	logFatalOnError(err)
 
 	bs, err := s.stashService.BuildStats(logs)
 	logFatalOnError(err)
 
-	for _, log := range logs {
-		fmt.Printf("%s %s\n", log.id, log.message)
-		fmt.Printf("   %s\n", bs[log.id])
-		fmt.Printf("\n")
+	if *format == "" {
+		*format = buildStatusDefaultTemplate
+		if f := defaultGitConfig("build-state.format.log"); f != "" {
+			*format = f
+		}
 	}
+
+	t, err := template.New("BuildState").Parse(*format)
+	logFatalOnError(err)
+
+	for _, log := range logs {
+		bsl := struct {
+			ID      CommitID
+			Message string
+			Status  BuildStatusCommitStat
+		}{
+			ID:      log.id,
+			Message: log.message,
+			Status:  bs[log.id],
+		}
+		if *formatJSON {
+			tmp = append(tmp, bsl)
+			continue
+		}
+		err = t.Execute(os.Stdout, bsl)
+		logFatalOnError(err)
+	}
+
+	if *formatJSON {
+		json.MarshalIndent(tmp, "", " ")
+	}
+	// for _, log := range logs {
+	// 	fmt.Printf("%s %s\n", log.id, log.message)
+	// 	fmt.Printf("   %s\n", bs[log.id])
+	// 	fmt.Printf("\n")
+	// }
 	return 0
 }
 
 func (s *subcommand) displayBuildState() int {
-	commit, err := newCommitIDFromRef(flag.Arg(0))
+	fl := flag.NewFlagSet("BuildState", flag.ExitOnError)
+	format := fl.String("format", "", "Go text template, see manual for more info")
+	formatJSON := fl.Bool("json", false, "Format output as JSON")
+
+	if *format == "" {
+		*format = buildStateDefaultTemplate
+		if f := defaultGitConfig("build-state.format.state"); f != "" {
+			*format = f
+		}
+	}
+
+	commit, err := newCommitIDFromRef(fl.Arg(0))
 	if err != nil {
 		if werr, ok := err.(*exec.ExitError); ok {
 			log.Printf("%s", werr.Stderr)
@@ -119,7 +184,13 @@ func (s *subcommand) displayBuildState() int {
 	}
 	bs, err := s.stashService.BuildStatus(commit)
 	logFatalOnError(err)
-	fmt.Print(bs)
+
+	if *formatJSON {
+		fmt.Print(json.MarshalIndent(bs.Values, "", " "))
+		return 0
+	}
+
+	fmt.Print(bs.Format(*format))
 	return 0
 }
 

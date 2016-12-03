@@ -5,12 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os/exec"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -153,6 +155,20 @@ type BuildStatusCommitStats map[CommitID]BuildStatusCommitStat
 // BuildState is the state representation
 type BuildState string
 
+// StashTime is used for unmarshaling JSON
+type StashTime time.Time
+
+// UnmashalJSON decodes string to time.Time
+func (st *StashTime) UnmashalJSON(b []byte) error {
+	t, err := strconv.ParseInt(string(b), 10, 64)
+	if err != nil {
+		return err
+	}
+
+	*st = StashTime(time.Unix(0, t*1000*1000))
+	return nil
+}
+
 // BuildStatus hold the current iformation from stash
 type BuildStatus struct {
 	State       BuildState `json:"state"`
@@ -160,20 +176,28 @@ type BuildStatus struct {
 	Name        string     `json:"name"`
 	URL         string     `json:"url"`
 	Description string     `json:"description"`
-	DateAdded   int64      `json:"dateAdded"`
+	DateAdded   StashTime  `json:"dateAdded"`
+}
+
+// Format the output of the BuildStatus
+func (bs BuildStatus) Format(tmpl string) string {
+	var buf bytes.Buffer
+	t, err := template.New("BuildState").Parse(tmpl)
+	logFatalOnError(err)
+	err = t.Execute(&buf, bs)
+	logFatalOnError(err)
+	return buf.String()
 }
 
 func (bs BuildStatus) String() string {
-	template := `Name:  %s     Key: %s
-State: %s
-URL:   %s
-Date:  %s
+	tmpl := `Name:  {{.Name}}     Key: {{.Key}}
+State: {{.State}}
+URL:   {{.URL}}
+Date:  {{.Date}}
 
-   %s
+   {{.Description}}
 `
-	output := fmt.Sprintf(template, bs.Name, bs.Key, bs.State, bs.URL, time.Unix(0, bs.DateAdded*1000*1000), bs.Description)
-	output = strings.Replace(output, "\\n", "\n   ", -1)
-	return output
+	return bs.Format(tmpl)
 }
 
 // BuildStatusResponse represent the JSON response from stash
@@ -183,6 +207,17 @@ type BuildStatusResponse struct {
 	IsLastPage bool          `json:"isLastPage"`
 	Start      int           `json:"start"`
 	Values     []BuildStatus `json:"values"`
+}
+
+// Format returns a BuildStatus formated according to tmpl which should
+// be a valid text.Template string definition
+func (bsr BuildStatusResponse) Format(tmpl string) string {
+	var buf bytes.Buffer
+	for _, value := range bsr.Values {
+		buf.WriteString(value.Format(tmpl))
+		buf.Write([]byte("\n"))
+	}
+	return buf.String()
 }
 
 func (bsr BuildStatusResponse) String() string {
