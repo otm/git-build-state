@@ -22,8 +22,8 @@ function target.release(version, name, description)
 	end
 
 	target.build(version)
-	blade.sh('git tag ' .. version)
-	blade.sh('git push --tags')
+	blade.sh(string.format("git tag -a %s -m '%s'", version, description))
+	blade.sh('git push origin ' .. version)
 
 	blade.sh(string.format("github-release release --user otm --repo git-build-state --tag %s --name '%s' --description '%s' %s", version, name, description, preRelease))
 
