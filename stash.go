@@ -63,6 +63,7 @@ func (s *StashService) BuildStats(c CommitIDer) (BuildStatusCommitStats, error) 
 	req = s.authenticator.Auth(req)
 	req.Header.Set("X-Atlassian-Token", "no-check")
 	req.Header.Set("Content-Type", "application/json")
+	debug.DumpRequest(req, true)
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -74,6 +75,7 @@ func (s *StashService) BuildStats(c CommitIDer) (BuildStatusCommitStats, error) 
 	if err != nil {
 		return nil, err
 	}
+	debug.Printf("Response: %s", body)
 
 	var commitStatus BuildStatusCommitStats
 	err = json.Unmarshal(body, &commitStatus)
@@ -93,16 +95,18 @@ func (s *StashService) BuildStatus(c CommitID) (BuildStatusResponse, error) {
 	logFatalOnError(err)
 	req = s.authenticator.Auth(req)
 	req.Header.Set("X-Atlassian-Token", "no-check")
+	debug.DumpRequest(req, false)
 
 	res, err := client.Do(req)
 	logFatalOnError(err)
 	defer res.Body.Close()
 	body, err := ioutil.ReadAll(res.Body)
 	logFatalOnError(err)
+	debug.Printf("Response: %s", body)
 
 	var buildStatus BuildStatusResponse
 	err = json.Unmarshal(body, &buildStatus)
-	if err != nil || buildStatus.Size == 0 {
+	if err != nil || buildStatus.Size == nil {
 		logFatalOnError(newStashError(body))
 	}
 
@@ -178,7 +182,7 @@ Date:  %s
 
 // BuildStatusResponse represent the JSON response from stash
 type BuildStatusResponse struct {
-	Size       int           `json:"size"`
+	Size       *int          `json:"size"`
 	Limit      int           `json:"limit"`
 	IsLastPage bool          `json:"isLastPage"`
 	Start      int           `json:"start"`
@@ -207,6 +211,10 @@ func newStashError(b []byte) error {
 	err := json.Unmarshal(b, &se)
 	if err != nil {
 		return err
+	}
+
+	if len(se.Errors) == 0 {
+		return fmt.Errorf("unknown error: %s", b)
 	}
 
 	return se
@@ -271,7 +279,7 @@ func (ba *BasicAuth) Auth(r *http.Request) *http.Request {
 	return r
 }
 
-func stashAPIURL() (*url.URL, error) {
+func stashAPIURL(proto string) (*url.URL, error) {
 	if endpoint := defaultGitConfig("build-state.endpoint"); endpoint != "" {
 		return url.Parse(endpoint)
 	}
@@ -288,5 +296,5 @@ func stashAPIURL() (*url.URL, error) {
 	if port != "" {
 		stashURL = stashURL + ":" + port
 	}
-	return url.Parse("https://" + stashURL)
+	return url.Parse(proto + "://" + stashURL)
 }

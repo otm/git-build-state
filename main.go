@@ -5,7 +5,10 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"net/http/httputil"
 	"os"
 	"os/exec"
 	"path"
@@ -17,13 +20,37 @@ import (
 
 //go:generate go run tools/include.go
 
+type debugger struct {
+	*log.Logger
+}
+
+func (d debugger) DumpRequest(req *http.Request, body bool) {
+	dump, err := httputil.DumpRequestOut(req, body)
+	if err != nil {
+		d.Printf("error dumping request: %v", err)
+	}
+	d.Printf("Request: %q\n", dump)
+}
+
+var (
+	debug = debugger{log.New(ioutil.Discard, " * ", 0)}
+)
+
 func main() {
 	log.SetFlags(log.Lshortfile)
 
 	displayLogFlag := flag.Bool("log", false, "Display git log with build statistics")
 	generateB64CredsFlag := flag.Bool("generate-creds", false, "Generate credentials")
 	installFlag := flag.Bool("install", false, "Run installer")
+	proto := flag.String("proto", "https", "The protocoll to use")
+	debugFlag := flag.Bool("debug", false, "Enable debug output")
 	flag.Parse()
+
+	if *debugFlag {
+		debug.SetFlags(0)
+		debug.SetPrefix("==> ")
+		debug.SetOutput(os.Stderr)
+	}
 
 	init := true
 	if *generateB64CredsFlag || *installFlag {
@@ -31,7 +58,7 @@ func main() {
 	}
 
 	code := 0
-	subcmd := newSubcommand(init)
+	subcmd := newSubcommand(init, *proto)
 
 	switch {
 	case *generateB64CredsFlag:
@@ -52,7 +79,7 @@ type subcommand struct {
 	stashService *StashService
 }
 
-func newSubcommand(init bool) *subcommand {
+func newSubcommand(init bool, proto string) *subcommand {
 	s := &subcommand{}
 
 	if !init {
@@ -61,7 +88,7 @@ func newSubcommand(init bool) *subcommand {
 
 	// ta := newTokenAuth(mustGitConfig("build-state.auth.user"), mustGitConfig("build-state.auth.token"))
 	ta := newBasicAuthFromCredentials(mustGitConfig("build-state.auth.user"), mustGitConfig("build-state.auth.credentials"))
-	stashURL, err := stashAPIURL()
+	stashURL, err := stashAPIURL(proto)
 	logFatalOnError(err)
 
 	s.stashService = newStashService(stashURL, ta)
