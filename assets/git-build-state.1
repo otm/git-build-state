@@ -1,6 +1,7 @@
 .\" Process this file with
 .\" groff -man -Tascii git-build-state.1
 .\"
+.hw build-state.format.log build-state.format.state
 .TH GIT-BUILD-STATE 1 "NOV 2016" git-build-state "User Manuals"
 .SH NAME
 git-build-state \- Display build state from Stash/Bitbucket
@@ -19,8 +20,17 @@ It is also possible to display a `git log' with build stats included.
 .SH OPTIONS
 .IP -log
 Show the git log with build stats included.
+.IP "-format <template>"
+Formats the output with Go's text/template. See \fI build-state.format.log \fR and \fI build-state.format.state \fR for more information.
+.IP -json
+Format output as JSON.
+.IP -install
+Sets up Bash completion, manual mapages, and authentication
+.IP "-proto <http|https>"
+Override the protocoll used with Stash/Bitbucket. This should only be used for development.
 .IP -generate-creds
 Use this for generating credentials necessary to communicate with Stash/Bitbucket
+
 .\----------------------------- CONFIGURATION ----------------------------------
 .SH CONFIGURATION
 Configuration is done with `git config`. Example to set build-state.auth.user configuration:
@@ -35,7 +45,7 @@ The username for authentications
 
 .I build-state.auth.credentials
 .RS
-Base64 encoded string of username and password. Encoded on the form .I username:password\fR. This might seem insecure, however it should not be worse the having a unencrypted token saved.
+Base64 encoded string of username and password. Encoded on the form \fI username:password\fR. This might seem insecure, however it should not be worse the having a unencrypted token saved.
 .RE
 
 .I build-state.endpoint
@@ -46,6 +56,31 @@ Normaly the Stash/Bitbucket URL is inferred from the git remote setting. This se
 .I build-state.port
 .RS
 Defines the port for the Stash/Bitbucket API
+.RE
+
+.I build-state.format.log
+.RS
+Template definition of the output for the log. The default template definition:
+.nf
+{{.ID}} {{.Message}}
+   Successful: {{.Status.Successful}},
+   In Progress: {{.Status.InProgress}},
+   Failed: {{.Status.Failed}}
+.fi
+.RE
+
+.I build-state.format.state
+.RS
+Template definition of the output for the build state. The default template definition:
+
+.nf
+Name:  {{.Name}}     Key: {{.Key}}
+State: {{.State}}
+URL:   {{.URL}}
+Date:  {{.DateAdded}}
+
+   {{.Description}}
+.fi
 .RE
 .\-------------------------------- AUTHOR --------------------------------------
 .SH AUTHOR

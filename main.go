@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -14,11 +15,30 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	"text/template"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
 
 //go:generate go run tools/include.go
+var (
+	debug = debugger{log.New(ioutil.Discard, " * ", 0)}
+)
+
+// TODO(nils): document build-state.format.log and build-state.format.state
+
+const (
+	buildStateDefaultTemplate = `Name:  {{.Name}}     Key: {{.Key}}
+State: {{.State}}
+URL:   {{.URL}}
+Date:  {{.DateAdded}}
+
+   {{.Description}}
+`
+	buildStatusDefaultTemplate = `{{.ID}} {{.Message}}
+   Successful: {{.Status.Successful}}, In Progress: {{.Status.InProgress}}, Failed: {{.Status.Failed}}
+`
+)
 
 type debugger struct {
 	*log.Logger
@@ -32,18 +52,18 @@ func (d debugger) DumpRequest(req *http.Request, body bool) {
 	d.Printf("Request: %q\n", dump)
 }
 
-var (
-	debug = debugger{log.New(ioutil.Discard, " * ", 0)}
-)
-
 func main() {
 	log.SetFlags(log.Lshortfile)
 
-	displayLogFlag := flag.Bool("log", false, "Display git log with build statistics")
-	generateB64CredsFlag := flag.Bool("generate-creds", false, "Generate credentials")
-	installFlag := flag.Bool("install", false, "Run installer")
-	proto := flag.String("proto", "https", "The protocoll to use")
-	debugFlag := flag.Bool("debug", false, "Enable debug output")
+	var (
+		displayLogFlag       = flag.Bool("log", false, "Display git log with build statistics")
+		generateB64CredsFlag = flag.Bool("generate-creds", false, "Generate credentials")
+		installFlag          = flag.Bool("install", false, "Run installer")
+		proto                = flag.String("proto", "https", "The protocoll to use")
+		debugFlag            = flag.Bool("debug", false, "Enable debug output")
+		format               = flag.String("format", "", "Go text template, see manual for more info")
+		formatJSON           = flag.Bool("json", false, "Format output as JSON")
+	)
 	flag.Parse()
 
 	if *debugFlag {
@@ -58,7 +78,11 @@ func main() {
 	}
 
 	code := 0
-	subcmd := newSubcommand(init, *proto)
+	subcmd := newSubcommand(init, subcommand{
+		proto:      *proto,
+		format:     *format,
+		formatJSON: *formatJSON,
+	})
 
 	switch {
 	case *generateB64CredsFlag:
@@ -77,22 +101,24 @@ func main() {
 
 type subcommand struct {
 	stashService *StashService
+	proto        string
+	formatJSON   bool
+	format       string
 }
 
-func newSubcommand(init bool, proto string) *subcommand {
-	s := &subcommand{}
+func newSubcommand(init bool, s subcommand) *subcommand {
+	sub := &s
 
 	if !init {
-		return s
+		return sub
 	}
 
-	// ta := newTokenAuth(mustGitConfig("build-state.auth.user"), mustGitConfig("build-state.auth.token"))
 	ta := newBasicAuthFromCredentials(mustGitConfig("build-state.auth.user"), mustGitConfig("build-state.auth.credentials"))
-	stashURL, err := stashAPIURL(proto)
+	stashURL, err := stashAPIURL(s.proto)
 	logFatalOnError(err)
 
-	s.stashService = newStashService(stashURL, ta)
-	return s
+	sub.stashService = newStashService(stashURL, ta)
+	return sub
 }
 
 func (s *subcommand) generateB64Credentials() int {
@@ -122,21 +148,60 @@ func readUserAndPassword() (user, password, b64credentials string) {
 }
 
 func (s *subcommand) displayLog() int {
+	var tmp []interface{}
+
 	logs, err := gitLogShort(flag.Arg(0))
 	logFatalOnError(err)
 
 	bs, err := s.stashService.BuildStats(logs)
 	logFatalOnError(err)
 
+	if s.format == "" {
+		s.format = buildStatusDefaultTemplate
+		if f := defaultGitConfig("build-state.format.log"); f != "" {
+			s.format = f
+		}
+	}
+
+	t, err := template.New("BuildState").Parse(s.format)
+	logFatalOnError(err)
+
 	for _, log := range logs {
-		fmt.Printf("%s %s\n", log.id, log.message)
-		fmt.Printf("   %s\n", bs[log.id])
-		fmt.Printf("\n")
+		bsl := struct {
+			ID      CommitID
+			Message string
+			Status  BuildStatusCommitStat
+		}{
+			ID:      log.id,
+			Message: log.message,
+			Status:  bs[log.id],
+		}
+		if s.formatJSON {
+			tmp = append(tmp, bsl)
+			continue
+		}
+		err = t.Execute(os.Stdout, bsl)
+		logFatalOnError(err)
+	}
+
+	if s.formatJSON {
+		out, err := json.MarshalIndent(tmp, "", "   ")
+		logFatalOnError(err)
+		fmt.Printf("%s\n", out)
 	}
 	return 0
 }
 
 func (s *subcommand) displayBuildState() int {
+	if s.format == "" {
+		s.format = buildStateDefaultTemplate
+		if f := defaultGitConfig("build-state.format.state"); f != "" {
+			s.format = f
+		}
+	}
+	debug.Printf("Format: %q", s.format)
+	debug.Printf("Git ref: %s", flag.Arg(0))
+
 	commit, err := newCommitIDFromRef(flag.Arg(0))
 	if err != nil {
 		if werr, ok := err.(*exec.ExitError); ok {
@@ -144,9 +209,19 @@ func (s *subcommand) displayBuildState() int {
 		}
 		log.Fatalf("Not a valid git reference: %s, error: %s", flag.Arg(0), err)
 	}
+
+	debug.Printf("Git commit: %s", commit)
 	bs, err := s.stashService.BuildStatus(commit)
 	logFatalOnError(err)
-	fmt.Print(bs)
+
+	if s.formatJSON {
+		out, err := json.MarshalIndent(bs.Values, "", "   ")
+		logFatalOnError(err)
+		fmt.Printf("%s\n", out)
+		return 0
+	}
+
+	fmt.Print(bs.Format(s.format))
 	return 0
 }
 
