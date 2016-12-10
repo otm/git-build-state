@@ -225,6 +225,20 @@ func (s *subcommand) displayBuildState() int {
 	return 0
 }
 
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	logFatalOnError(err)
+
+	// this should never be executed
+	return true
+}
+
 func (s *subcommand) install() int {
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		fmt.Println("There is only support for installation in Linux and MacOS")
@@ -232,14 +246,24 @@ func (s *subcommand) install() int {
 	}
 
 	// Install man pages
-	manPath := "/usr/local/share/man/man1/git-build-state.1"
-	fmt.Printf("Installing man page: %s\n", manPath)
-	manFile, err := os.Create(manPath)
-	logFatalOnError(err)
-	_, err = manFile.Write(asset("git-build-state.1"))
-	logFatalOnError(err)
-	err = manFile.Close()
-	logFatalOnError(err)
+	manPath := "/usr/local/share/man"
+	if exists(manPath) {
+		manPath = path.Join(manPath, "man1")
+		if !exists(manPath) {
+			err := os.Mkdir(manPath, os.FileMode(0755))
+			logFatalOnError(err)
+		}
+		manPath = path.Join(manPath, "git-build-state.1")
+		fmt.Printf("Installing man page: %s\n", manPath)
+		manFile, err := os.Create(manPath)
+		logFatalOnError(err)
+		_, err = manFile.Write(asset("git-build-state.1"))
+		logFatalOnError(err)
+		err = manFile.Close()
+		logFatalOnError(err)
+	} else {
+		fmt.Printf("Skipping installation of man pages: missing directory: %v\n", manPath)
+	}
 
 	// Install bash completion
 	compDir := ""
